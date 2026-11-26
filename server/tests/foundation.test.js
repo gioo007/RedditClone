@@ -4,8 +4,16 @@ import mongoose from 'mongoose';
 
 import { createApp } from '../src/app.js';
 import { requireAuth } from '../src/middleware/auth.js';
+import {
+  idParamSchema,
+  postSortQuerySchema,
+  validate,
+  voteBodySchema,
+  z,
+} from '../src/middleware/validate.js';
 import { Comment, Community, Membership, Post, User, Vote } from '../src/models/index.js';
 import { castPostVote, resetInMemoryVotes } from '../src/services/vote.service.js';
+import { asyncHandler } from '../src/utils/asyncHandler.js';
 import { decodeCursor, encodeCursor } from '../src/utils/pagination.js';
 
 describe('Phase 0 Backend Foundation', () => {
@@ -13,11 +21,43 @@ describe('Phase 0 Backend Foundation', () => {
   let baseUrl;
 
   before(async () => {
+    const sampleBodySchema = z.object({
+      displayName: z.string().trim().min(1).max(50),
+      bio: z.string().trim().max(500).default(''),
+    });
+
     const app = createApp({
       registerExtraRoutes(instance) {
         instance.get('/api/_test-auth', requireAuth, (req, res) => {
           res.status(200).json({ success: true, data: req.user });
         });
+
+        instance.post(
+          '/api/_test-validate/:id',
+          validate({
+            params: idParamSchema,
+            query: postSortQuerySchema,
+            body: sampleBodySchema,
+          }),
+          (req, res) => {
+            res.status(200).json({
+              success: true,
+              data: {
+                params: req.params,
+                query: req.query,
+                body: req.body,
+              },
+            });
+          }
+        );
+
+        instance.post(
+          '/api/_test-direct-zod',
+          asyncHandler(async (req, res) => {
+            const parsed = voteBodySchema.parse(req.body);
+            res.status(200).json({ success: true, data: parsed });
+          })
+        );
       },
     });
 
@@ -163,5 +203,48 @@ describe('Phase 0 Backend Foundation', () => {
       value: 1,
     });
     assert.equal(vote.validateSync(), undefined);
+  });
+
+  it('Zod validate middleware strips unknown keys, coerces queries, and formats 400 errors', async () => {
+    const validId = new mongoose.Types.ObjectId().toString();
+
+    const okRes = await fetch(`${baseUrl}/api/_test-validate/${validId}?limit=15&sort=top`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        displayName: '  Alice  ',
+        karma: { post: 999999 },
+        isAdmin: true,
+      }),
+    });
+    assert.equal(okRes.status, 200);
+    const okBody = await okRes.json();
+    assert.equal(okBody.data.query.limit, 15);
+    assert.equal(okBody.data.query.sort, 'top');
+    assert.deepEqual(okBody.data.body, { displayName: 'Alice', bio: '' });
+    assert.equal('karma' in okBody.data.body, false);
+    assert.equal('isAdmin' in okBody.data.body, false);
+
+    const badRes = await fetch(`${baseUrl}/api/_test-validate/not-an-id?limit=999`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: '' }),
+    });
+    assert.equal(badRes.status, 400);
+    const badBody = await badRes.json();
+    assert.equal(badBody.success, false);
+    assert.equal(badBody.error.code, 'VALIDATION_ERROR');
+    assert.ok(badBody.error.details.some((d) => d.field === 'id'));
+    assert.ok(badBody.error.details.some((d) => d.field === 'limit'));
+    assert.ok(badBody.error.details.some((d) => d.field === 'displayName'));
+
+    const directZodRes = await fetch(`${baseUrl}/api/_test-direct-zod`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ value: 5 }),
+    });
+    assert.equal(directZodRes.status, 400);
+    const directZodBody = await directZodRes.json();
+    assert.equal(directZodBody.error.code, 'VALIDATION_ERROR');
   });
 });

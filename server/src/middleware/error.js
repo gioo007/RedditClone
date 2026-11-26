@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
+import { ZodError } from 'zod';
 import { ApiError } from '../utils/ApiError.js';
 import { env } from '../config/env.js';
+import { formatZodIssues } from './validate.js';
 
 export function notFoundHandler(req, _res, next) {
   next(ApiError.notFound(`Route ${req.method} ${req.originalUrl} not found`));
@@ -14,6 +16,17 @@ export function errorHandler(err, _req, res, _next) {
         code: err.code,
         message: err.message,
         ...(err.details.length > 0 ? { details: err.details } : {}),
+      },
+    });
+  }
+
+  if (err instanceof ZodError) {
+    return res.status(400).json({
+      success: false,
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: formatZodIssues(err.issues),
       },
     });
   }

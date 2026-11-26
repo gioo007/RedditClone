@@ -72,7 +72,7 @@ npm run dev
   - `controllers/*.controller.js` — Parse `req`, call service(s), send standardized JSON response (`200`, `201`, etc.); pass errors to `next(err)`.
   - `services/*.service.js` — Pure business logic and Mongoose queries (no `req`/`res` objects).
   - `models/*.js` — Mongoose schemas, indexes, and model exports.
-  - `middleware/*.js` — Auth (`requireAuth`, `optionalAuth`), moderation (`requireModerator`), validation, and error handling.
+  - `middleware/*.js` — Auth (`requireAuth`, `optionalAuth`), moderation (`requireModerator`), Zod request validation (`validate`), and error handling.
   - `utils/*.js` — Shared stateless helpers (`ApiError.js`, `asyncHandler.js`, `pagination.js`).
 - **Frontend Layering (`client/src/`):**
   - `api/` — Centralized HTTP/mock client (`client.js`, `mockAdapter.js`). Components **never** hardcode `fetch('http://localhost:5000/...')`; always import methods from `src/api/`.
@@ -138,6 +138,27 @@ Standard error codes:
 - `RATE_LIMITED` (`429`)
 - `AI_SERVICE_ERROR` (`502` / `503`)
 - `INTERNAL_ERROR` (`500`)
+
+### 4.1.1 Request Validation (`server/src/middleware/validate.js`)
+
+Use the shared **Zod** `validate({ params, query, body })` middleware on routes in Phases 2 and 3. It coerces query parameters, strips unexpected body keys (preventing mass-assignment of fields like `karma` or `score`), and formats errors into `VALIDATION_ERROR` automatically:
+
+```js
+import { validate, z, idParamSchema } from '../middleware/validate.js';
+
+const updatePostSchema = z.object({
+  content: z.string().max(40000).optional(),
+  linkUrl: z.string().url().optional(),
+  imageUrl: z.string().url().optional(),
+});
+
+router.patch(
+  '/:id',
+  requireAuth,
+  validate({ params: idParamSchema, body: updatePostSchema }),
+  updatePost
+);
+```
 
 ### 4.2 Cursor Pagination Format
 
