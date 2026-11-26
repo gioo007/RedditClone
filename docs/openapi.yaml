@@ -1,0 +1,1794 @@
+openapi: 3.0.3
+info:
+  title: Reddit Clone REST API
+  version: 1.0.0
+  description: |
+    Contract-first OpenAPI specification for the MERN Reddit Clone (Phase 0 v1).
+    All frontend and backend tracks build against this specification.
+
+    ### Conventions
+    - **Success envelope:** `{ "success": true, "data": ... }` (plus `"pagination"` on cursor-paginated endpoints).
+    - **Error envelope:** `{ "success": false, "error": { "code": "...", "message": "...", "details": [...] } }`.
+    - **Pagination:** Cursor-based (`cursor` + `limit`, returning `{ nextCursor, hasMore, limit }`).
+    - **Voting:** Idempotent target state (`value` in `[1, -1, 0]`) for both posts and comments.
+    - **Development stub auth:** During parallel development before JWT auth is merged, endpoints accepting `bearerAuth` also honor `x-dev-user-id` in `development` mode.
+servers:
+  - url: http://localhost:5000/api
+    description: Local development server
+
+tags:
+  - name: Health
+    description: Service liveness and database connectivity
+  - name: Auth
+    description: Account registration, login, and session identity (Req 1)
+  - name: Users
+    description: User profiles and activity listings (Req 2)
+  - name: Communities
+    description: Community creation, membership, and listing (Req 3, 4, 6, 14)
+  - name: Posts
+    description: Post CRUD, voting, moderation, and AI summarization (Req 5, 6, 8, 12, 13, 14, AI)
+  - name: Feed
+    description: Personalized home feed from joined communities (Req 7, 12)
+  - name: Comments
+    description: Nested comment threads, voting, and moderation (Req 9, 11, 13, 14)
+  - name: Search
+    description: Search communities and users (Req 10)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT returned by `/auth/login` or `/auth/register`
+    devUserHeader:
+      type: apiKey
+      in: header
+      name: x-dev-user-id
+      description: Development-only stub header (24-hex ObjectId) for parallel Phase 1-3 testing
+
+  parameters:
+    CursorParam:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque base64url pagination cursor from previous response `pagination.nextCursor`
+      schema:
+        type: string
+    LimitParam:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of items to return
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    PostSortParam:
+      name: sort
+      in: query
+      required: false
+      description: Sort order for post listings
+      schema:
+        type: string
+        enum: [new, top]
+        default: new
+    ObjectIdPathParam:
+      name: id
+      in: path
+      required: true
+      description: 24-character hex MongoDB ObjectId
+      schema:
+        type: string
+        pattern: '^[a-fA-F0-9]{24}$'
+
+  schemas:
+    ObjectId:
+      type: string
+      pattern: '^[a-fA-F0-9]{24}$'
+      example: 65f1a2b3c4d5e6f7a8b9c0d1
+
+    CursorPagination:
+      type: object
+      required: [nextCursor, hasMore, limit]
+      properties:
+        nextCursor:
+          type: string
+          nullable: true
+          example: eyJ2IjoxNzA5ODUwMDAwMDAwLCJpZCI6IjY1ZjFhMmIzYzRkNWU2ZjdhOGI5YzBkMSJ9
+        hasMore:
+          type: boolean
+          example: true
+        limit:
+          type: integer
+          example: 20
+
+    ErrorDetail:
+      type: object
+      required: [message]
+      properties:
+        field:
+          type: string
+          example: username
+        message:
+          type: string
+          example: Username must be between 3 and 30 characters
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - VALIDATION_ERROR
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - CONFLICT
+                - RATE_LIMITED
+                - AI_SERVICE_ERROR
+                - INTERNAL_ERROR
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Request validation failed
+            details:
+              type: array
+              items:
+                $ref: '#/components/schemas/ErrorDetail'
+
+    UserSummary:
+      type: object
+      required: [_id, username]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        username:
+          type: string
+          example: spez
+        displayName:
+          type: string
+          example: Steve Huffman
+        avatarUrl:
+          type: string
+          example: https://api.dicebear.com/9.x/bottts/svg?seed=spez
+
+    UserProfile:
+      allOf:
+        - $ref: '#/components/schemas/UserSummary'
+        - type: object
+          required: [bio, karma, createdAt]
+          properties:
+            email:
+              type: string
+              format: email
+              description: Included only when viewing own profile (`/auth/me` or `/users/me`)
+              example: spez@example.com
+            bio:
+              type: string
+              example: Building communities on the web.
+            bannerUrl:
+              type: string
+              example: ''
+            karma:
+              type: object
+              required: [post, comment]
+              properties:
+                post:
+                  type: integer
+                  example: 142
+                comment:
+                  type: integer
+                  example: 89
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    AuthPayload:
+      type: object
+      required: [user, token]
+      properties:
+        user:
+          $ref: '#/components/schemas/UserProfile'
+        token:
+          type: string
+          description: Signed JWT access token
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    CommunityRule:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 100
+          example: Be civil and constructive
+        description:
+          type: string
+          maxLength: 500
+          example: Personal attacks and spam will be removed by moderators.
+
+    CommunitySummary:
+      type: object
+      required: [_id, name, title, description, memberCount]
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        name:
+          type: string
+          pattern: '^[a-zA-Z0-9_]{3,21}$'
+          example: webdev
+        title:
+          type: string
+          example: Web Development
+        description:
+          type: string
+          example: A community dedicated to all things web development.
+        iconUrl:
+          type: string
+          example: ''
+        memberCount:
+          type: integer
+          minimum: 0
+          example: 1250
+        isMember:
+          type: boolean
+          description: Whether the authenticated requester has joined this community
+          example: true
+
+    CommunityDetail:
+      allOf:
+        - $ref: '#/components/schemas/CommunitySummary'
+        - type: object
+          required: [creator, rules, postCount, isModerator, createdAt]
+          properties:
+            bannerUrl:
+              type: string
+              example: ''
+            rules:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommunityRule'
+            creator:
+              $ref: '#/components/schemas/UserSummary'
+            moderators:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserSummary'
+            postCount:
+              type: integer
+              minimum: 0
+              example: 84
+            isModerator:
+              type: boolean
+              description: True when authenticated requester is the community creator/moderator
+              example: false
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    AiSummaryEmbed:
+      type: object
+      nullable: true
+      properties:
+        text:
+          type: string
+          nullable: true
+          example: The author compares cursor pagination and offset pagination in MongoDB, concluding compound cursors prevent duplicate items in live feeds.
+        generatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        model:
+          type: string
+          nullable: true
+          example: gemini-2.5-flash
+
+    Post:
+      type: object
+      required:
+        - _id
+        - title
+        - type
+        - content
+        - author
+        - community
+        - score
+        - upvoteCount
+        - downvoteCount
+        - commentCount
+        - userVote
+        - isDeleted
+        - isRemoved
+        - createdAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        title:
+          type: string
+          maxLength: 300
+          example: Why compound cursors beat skip/limit for Reddit-style feeds
+        type:
+          type: string
+          enum: [text, link, image]
+          example: text
+        content:
+          type: string
+          maxLength: 40000
+          example: When new posts arrive while a user scrolls, offset pagination shifts rows...
+        linkUrl:
+          type: string
+          example: ''
+        imageUrl:
+          type: string
+          example: ''
+        author:
+          $ref: '#/components/schemas/UserSummary'
+        community:
+          type: object
+          required: [_id, name, title]
+          properties:
+            _id:
+              $ref: '#/components/schemas/ObjectId'
+            name:
+              type: string
+              example: webdev
+            title:
+              type: string
+              example: Web Development
+            iconUrl:
+              type: string
+              example: ''
+        score:
+          type: integer
+          example: 42
+        upvoteCount:
+          type: integer
+          minimum: 0
+          example: 45
+        downvoteCount:
+          type: integer
+          minimum: 0
+          example: 3
+        commentCount:
+          type: integer
+          minimum: 0
+          example: 12
+        userVote:
+          type: integer
+          enum: [1, -1, 0]
+          description: Authenticated user's current vote (0 if unvoted or guest)
+          example: 1
+        aiSummary:
+          $ref: '#/components/schemas/AiSummaryEmbed'
+        isDeleted:
+          type: boolean
+          example: false
+        isRemoved:
+          type: boolean
+          example: false
+        removedReason:
+          type: string
+          nullable: true
+          example: null
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Comment:
+      type: object
+      required:
+        - _id
+        - post
+        - community
+        - author
+        - parentComment
+        - depth
+        - content
+        - score
+        - upvoteCount
+        - downvoteCount
+        - userVote
+        - isDeleted
+        - isRemoved
+        - createdAt
+      properties:
+        _id:
+          $ref: '#/components/schemas/ObjectId'
+        post:
+          $ref: '#/components/schemas/ObjectId'
+        community:
+          $ref: '#/components/schemas/ObjectId'
+        author:
+          $ref: '#/components/schemas/UserSummary'
+        parentComment:
+          type: string
+          nullable: true
+          pattern: '^[a-fA-F0-9]{24}$'
+          description: Null for top-level comments; parent Comment ObjectId for nested replies
+          example: null
+        depth:
+          type: integer
+          minimum: 0
+          maximum: 10
+          example: 0
+        content:
+          type: string
+          maxLength: 10000
+          example: Great breakdown! Adding an index on (community, score, _id) makes Top sort instant too.
+        score:
+          type: integer
+          example: 9
+        upvoteCount:
+          type: integer
+          minimum: 0
+          example: 10
+        downvoteCount:
+          type: integer
+          minimum: 0
+          example: 1
+        userVote:
+          type: integer
+          enum: [1, -1, 0]
+          example: 0
+        isDeleted:
+          type: boolean
+          example: false
+        isRemoved:
+          type: boolean
+          example: false
+        removedReason:
+          type: string
+          nullable: true
+          example: null
+        editedAt:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    VoteRequest:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: integer
+          enum: [1, -1, 0]
+          description: 1 = upvote, -1 = downvote, 0 = remove existing vote
+          example: 1
+
+    VoteResult:
+      type: object
+      required: [targetId, targetType, score, upvoteCount, downvoteCount, userVote]
+      properties:
+        targetId:
+          $ref: '#/components/schemas/ObjectId'
+        targetType:
+          type: string
+          enum: [Post, Comment]
+          example: Post
+        score:
+          type: integer
+          example: 43
+        upvoteCount:
+          type: integer
+          example: 46
+        downvoteCount:
+          type: integer
+          example: 3
+        userVote:
+          type: integer
+          enum: [1, -1, 0]
+          example: 1
+
+    AiSummaryResult:
+      type: object
+      required: [postId, summary, generatedAt, cached]
+      properties:
+        postId:
+          $ref: '#/components/schemas/ObjectId'
+        summary:
+          type: string
+          example: Key takeaway summary generated by AI.
+        model:
+          type: string
+          example: gemini-2.5-flash
+        generatedAt:
+          type: string
+          format: date-time
+        cached:
+          type: boolean
+          description: True if returned from cached `post.aiSummary` without an external API call
+          example: false
+
+  responses:
+    BadRequest:
+      description: Validation error or malformed input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing or invalid authentication token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated user lacks permission (author or community moderator required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource was not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Unique constraint conflict (e.g., username, email, or community name taken)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Check API server and database status
+      responses:
+        '200':
+          description: Server is running
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required: [status, database, timestamp]
+                    properties:
+                      status:
+                        type: string
+                        example: ok
+                      database:
+                        type: string
+                        enum: [connected, connecting, disconnected]
+                        example: connected
+                      timestamp:
+                        type: string
+                        format: date-time
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, email, password]
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                  pattern: '^[a-zA-Z0-9_]+$'
+                  example: dev_alice
+                email:
+                  type: string
+                  format: email
+                  example: alice@example.com
+                password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+                  example: Str0ngPass!
+                displayName:
+                  type: string
+                  maxLength: 50
+                  example: Alice
+      responses:
+        '201':
+          description: Account created and JWT issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AuthPayload'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate with email or username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, password]
+              properties:
+                identifier:
+                  type: string
+                  description: Username or email address
+                  example: dev_alice
+                password:
+                  type: string
+                  example: Str0ngPass!
+      responses:
+        '200':
+          description: Authenticated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AuthPayload'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get currently authenticated user profile
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        '200':
+          description: Current user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Log out current session
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Logged out successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me:
+    patch:
+      tags: [Users]
+      summary: Edit the authenticated user's profile
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  maxLength: 50
+                bio:
+                  type: string
+                  maxLength: 500
+                avatarUrl:
+                  type: string
+                bannerUrl:
+                  type: string
+      responses:
+        '200':
+          description: Updated user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{username}:
+    get:
+      tags: [Users]
+      summary: View a user's public profile
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Public user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/UserProfile'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{username}/posts:
+    get:
+      tags: [Users]
+      summary: List posts authored by a user
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PostSortParam'
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of user's posts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/{username}/comments:
+    get:
+      tags: [Users]
+      summary: List comments authored by a user
+      parameters:
+        - name: username
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of user's comments
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /communities:
+    get:
+      tags: [Communities]
+      summary: Browse communities with cursor pagination
+      parameters:
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [members, new]
+            default: members
+        - name: memberOnly
+          in: query
+          description: If true and authenticated, return only communities joined by the current user
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of communities
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CommunitySummary'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+
+    post:
+      tags: [Communities]
+      summary: Create a new community (creator becomes moderator and initial member)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 21
+                  pattern: '^[a-zA-Z0-9_]+$'
+                  example: webdev
+                title:
+                  type: string
+                  maxLength: 100
+                  example: Web Development
+                description:
+                  type: string
+                  maxLength: 500
+                iconUrl:
+                  type: string
+                bannerUrl:
+                  type: string
+                rules:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CommunityRule'
+      responses:
+        '201':
+          description: Community created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/CommunityDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /communities/{name}:
+    get:
+      tags: [Communities]
+      summary: Get details of a community by name (`r/{name}`)
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Community details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/CommunityDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Communities]
+      summary: Update community details (moderator only)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 100
+                description:
+                  type: string
+                  maxLength: 500
+                iconUrl:
+                  type: string
+                bannerUrl:
+                  type: string
+                rules:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CommunityRule'
+      responses:
+        '200':
+          description: Updated community details
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/CommunityDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /communities/{name}/join:
+    post:
+      tags: [Communities]
+      summary: Join a community
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Joined community (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required: [communityName, isMember, memberCount]
+                    properties:
+                      communityName:
+                        type: string
+                        example: webdev
+                      isMember:
+                        type: boolean
+                        example: true
+                      memberCount:
+                        type: integer
+                        example: 1251
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /communities/{name}/leave:
+    post:
+      tags: [Communities]
+      summary: Leave a community (community creator cannot leave as sole moderator)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Left community
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required: [communityName, isMember, memberCount]
+                    properties:
+                      communityName:
+                        type: string
+                        example: webdev
+                      isMember:
+                        type: boolean
+                        example: false
+                      memberCount:
+                        type: integer
+                        example: 1250
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /communities/{name}/posts:
+    get:
+      tags: [Communities, Posts]
+      summary: View posts in a community with sorting and cursor pagination
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PostSortParam'
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated community posts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Communities, Posts]
+      summary: Create a new post in a community
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, type]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 300
+                type:
+                  type: string
+                  enum: [text, link, image]
+                  default: text
+                content:
+                  type: string
+                  maxLength: 40000
+                  description: Required or optional body text when `type` is `text`
+                linkUrl:
+                  type: string
+                  format: uri
+                  description: Required when `type` is `link`
+                imageUrl:
+                  type: string
+                  format: uri
+                  description: Required when `type` is `image`
+      responses:
+        '201':
+          description: Post created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /feed:
+    get:
+      tags: [Feed]
+      summary: View personalized home feed (posts from joined communities, falling back to global feed for guests or users with 0 joined communities)
+      parameters:
+        - $ref: '#/components/parameters/PostSortParam'
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Cursor-paginated feed posts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+
+  /posts:
+    get:
+      tags: [Posts, Feed]
+      summary: Browse global/popular posts across all communities
+      parameters:
+        - $ref: '#/components/parameters/PostSortParam'
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Cursor-paginated global posts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+
+  /posts/{id}:
+    get:
+      tags: [Posts]
+      summary: Get single post details by ID
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      responses:
+        '200':
+          description: Post detail
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags: [Posts]
+      summary: Edit your own post (clears cached AI summary if body changes)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                content:
+                  type: string
+                  maxLength: 40000
+                linkUrl:
+                  type: string
+                  format: uri
+                imageUrl:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: Updated post
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Posts]
+      summary: Soft-delete your own post
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      responses:
+        '200':
+          description: Post soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required: [_id, isDeleted]
+                    properties:
+                      _id:
+                        $ref: '#/components/schemas/ObjectId'
+                      isDeleted:
+                        type: boolean
+                        example: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{id}/remove:
+    post:
+      tags: [Posts]
+      summary: Remove a post as the community moderator
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 300
+                  example: Violates community rule 1
+      responses:
+        '200':
+          description: Post removed by moderator
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Post'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{id}/vote:
+    put:
+      tags: [Posts]
+      summary: Upvote, downvote, or remove vote on a post (concurrency-safe)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+      responses:
+        '200':
+          description: Updated post vote state and score
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/VoteResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /posts/{id}/summary:
+    post:
+      tags: [Posts]
+      summary: Summarize a post using server-side generative AI
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      responses:
+        '200':
+          description: AI-generated or cached post summary
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AiSummaryResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          description: Upstream AI provider failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /posts/{id}/comments:
+    get:
+      tags: [Comments]
+      summary: List all comments for a post (flattened list with `parentComment` and `depth` for client tree assembly)
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [top, new]
+            default: top
+      responses:
+        '200':
+          description: List of comments on the post
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags: [Comments]
+      summary: Create a comment on a post or reply to an existing comment
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                parentCommentId:
+                  type: string
+                  nullable: true
+                  pattern: '^[a-fA-F0-9]{24}$'
+                  description: Omit or set null for top-level comment; provide parent Comment ID to reply
+                  example: null
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{id}:
+    patch:
+      tags: [Comments]
+      summary: Edit your own comment
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+      responses:
+        '200':
+          description: Updated comment
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Comment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Comments]
+      summary: Soft-delete your own comment (preserves child replies in thread)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      responses:
+        '200':
+          description: Comment soft-deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{id}/remove:
+    post:
+      tags: [Comments]
+      summary: Remove a comment as the community moderator (preserves child replies)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 300
+      responses:
+        '200':
+          description: Comment removed by moderator
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Comment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /comments/{id}/vote:
+    put:
+      tags: [Comments]
+      summary: Upvote, downvote, or remove vote on a comment (concurrency-safe)
+      security:
+        - bearerAuth: []
+        - devUserHeader: []
+      parameters:
+        - $ref: '#/components/parameters/ObjectIdPathParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoteRequest'
+      responses:
+        '200':
+          description: Updated comment vote state and score
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/VoteResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /search:
+    get:
+      tags: [Search]
+      summary: Search for communities and users by query string
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query (minimum 1 non-whitespace character)
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [all, communities, users]
+            default: all
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Matching communities and/or users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    required: [communities, users]
+                    properties:
+                      communities:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/CommunitySummary'
+                      users:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/UserSummary'
+                  pagination:
+                    $ref: '#/components/schemas/CursorPagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'

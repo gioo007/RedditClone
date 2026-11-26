@@ -1,0 +1,37 @@
+{
+  "name": "reddit-clone-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express REST API for the MERN Reddit Clone",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "NODE_ENV=test node --test tests/*.test.js",
+    "seed": "node ../scripts/seed.js",
+    "lint": "eslint .",
+    "format": "prettier --ignore-path ../.prettierignore --write . ../scripts ../CONTRIBUTING.md ../docs/openapi.yaml",
+    "format:check": "prettier --ignore-path ../.prettierignore --check . ../scripts ../CONTRIBUTING.md ../docs/openapi.yaml"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.10.1",
+    "morgan": "^1.10.0",
+    "swagger-ui-express": "^5.0.1",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "eslint": "^9.19.0",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2"
+  }
+}
