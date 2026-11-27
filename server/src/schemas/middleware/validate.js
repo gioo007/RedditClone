@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ApiError } from '../utils/ApiError.js';
+import { ApiError } from '../../utils/ApiError.js';
 
 export { z };
 

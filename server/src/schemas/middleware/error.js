@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { ZodError } from 'zod';
-import { ApiError } from '../utils/ApiError.js';
-import { env } from '../config/env.js';
+import { ApiError } from '../../utils/ApiError.js';
+import { env } from '../../config/env.js';
 import { formatZodIssues } from './validate.js';
 
 export function notFoundHandler(req, _res, next) {
