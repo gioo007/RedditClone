@@ -1,0 +1,121 @@
+/* Voting component wrapper */
+.vote-wrapper {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+/* Main voting pill */
+.vote-pill {
+  --vote-up: #d93a00;
+  --vote-down: #5a4fe0;
+  --vote-bg: #eaedef;
+  --vote-text: #1c1c1c;
+  --vote-hover: rgba(0, 0, 0, 0.08);
+
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  border-radius: 16px;
+  background: var(--vote-bg);
+  color: var(--vote-text);
+  font:
+    700 12px/16px 'IBM Plex Sans',
+    Arial,
+    sans-serif;
+  flex-shrink: 0;
+}
+
+/* Active voting states */
+.vote-pill--up {
+  color: var(--vote-up);
+}
+
+.vote-pill--down {
+  color: var(--vote-down);
+}
+
+/* Voting buttons */
+.vote-pill__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--vote-text);
+  cursor: pointer;
+  flex-shrink: 0;
+
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+/* Hover effects */
+.vote-pill__btn:hover {
+  background: var(--vote-hover);
+}
+
+/* Upvote button state */
+.vote-pill__btn--up:hover,
+.vote-pill--up .vote-pill__btn--up {
+  color: var(--vote-up);
+}
+
+/* Downvote button state */
+.vote-pill__btn--down:hover,
+.vote-pill--down .vote-pill__btn--down {
+  color: var(--vote-down);
+}
+
+/* Keyboard accessibility */
+.vote-pill__btn:focus-visible {
+  outline: 2px solid #0079d3;
+  outline-offset: -2px;
+}
+
+/* Vote score */
+.vote-pill__score {
+  min-width: 20px;
+  padding: 0 2px;
+  text-align: center;
+  user-select: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* API error message */
+.vote-pill__error {
+  color: #b42318;
+  font-size: 12px;
+  line-height: 16px;
+  max-width: 200px;
+  overflow-wrap: anywhere;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  .vote-pill {
+    --vote-up: #ff6a3d;
+    --vote-down: #8c85ff;
+    --vote-bg: #2a3236;
+    --vote-text: #eaedef;
+    --vote-hover: rgba(255, 255, 255, 0.1);
+  }
+
+  .vote-pill__error {
+    color: #ff8a80;
+  }
+}
+
+/* Respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  .vote-pill__btn {
+    transition: none;
+  }
+}

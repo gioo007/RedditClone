@@ -1,9 +1,14 @@
+
 import { Router } from 'express';
 import healthRoutes from './health.routes.js';
+import voteRoutes from './vote.routes.js';
 
 const router = Router();
 
 router.use('/health', healthRoutes);
+
+// Voting endpoints
+router.use('/', voteRoutes);
 
 // Track mount points reserved by docs/openapi.yaml:
 // Phase 2 (Member B): /auth, /users, /communities, /search

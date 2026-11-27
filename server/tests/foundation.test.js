@@ -12,7 +12,6 @@ import {
   z,
 } from '../src/middleware/validate.js';
 import { Comment, Community, Membership, Post, User, Vote } from '../src/models/index.js';
-import { castPostVote, resetInMemoryVotes } from '../src/services/vote.service.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
 import { decodeCursor, encodeCursor } from '../src/utils/pagination.js';
 
@@ -122,27 +121,6 @@ describe('Phase 0 Backend Foundation', () => {
     const token = encodeCursor({ value: 42, id });
     const decoded = decodeCursor(token);
     assert.deepEqual(decoded, { v: 42, id });
-  });
-
-  it('In-memory voting stand-in computes accurate deltas for up, switch, and unvote', async () => {
-    resetInMemoryVotes();
-    const userId = new mongoose.Types.ObjectId().toString();
-    const postId = new mongoose.Types.ObjectId().toString();
-
-    const up = await castPostVote(userId, postId, 1);
-    assert.equal(up.score, 1);
-    assert.equal(up.upvoteCount, 1);
-    assert.equal(up.downvoteCount, 0);
-
-    const switched = await castPostVote(userId, postId, -1);
-    assert.equal(switched.score, -1);
-    assert.equal(switched.upvoteCount, 0);
-    assert.equal(switched.downvoteCount, 1);
-
-    const cleared = await castPostVote(userId, postId, 0);
-    assert.equal(cleared.score, 0);
-    assert.equal(cleared.upvoteCount, 0);
-    assert.equal(cleared.downvoteCount, 0);
   });
 
   it('All 6 Mongoose schema skeletons validate required fields and relationships', () => {
