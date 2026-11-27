@@ -1,5 +1,7 @@
 import mongoose from 'mongoose';
 import { env } from './env.js';
+import { RefreshToken } from '../models/RefreshToken.js';
+import { User } from '../models/User.js';
 
 const READY_STATE_MAP = {
   0: 'disconnected',
@@ -22,18 +24,17 @@ export async function connectDB(uri = env.mongodbUri) {
     await mongoose.connect(uri, {
       serverSelectionTimeoutMS: 3000,
     });
-    console.log(`[db] Connected to MongoDB (${mongoose.connection.name})`);
-    return true;
   } catch (err) {
     if (env.nodeEnv === 'production') {
       throw err;
     }
-    console.warn(
-      `[db] Could not connect to MongoDB at ${uri} (${err.message}). ` +
-        'Server will keep running in development mode until MongoDB is started.'
-    );
+    console.warn('[db] Could not connect to MongoDB; continuing in development mode.');
     return false;
   }
+
+  await Promise.all([User.createIndexes(), RefreshToken.createIndexes()]);
+  console.log(`[db] Connected to MongoDB (${mongoose.connection.name})`);
+  return true;
 }
 
 export async function disconnectDB() {
