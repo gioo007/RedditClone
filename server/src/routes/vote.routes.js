@@ -1,7 +1,7 @@
 import express from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth } from '../schemas/middleware/auth.js';
 
-import { validate, idParamSchema, voteBodySchema } from '../middleware/validate.js';
+import { validate, idParamSchema, voteBodySchema } from '../schemas/middleware/validate.js';
 
 import { votePost, voteComment } from '../controllers/vote.controller.js';
 

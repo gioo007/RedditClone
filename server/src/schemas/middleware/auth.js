@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
-import { env } from '../config/env.js';
-import { ApiError } from '../utils/ApiError.js';
+import { env } from '../../config/env.js';
+import { ApiError } from '../../utils/ApiError.js';
 
 /**
  * Extract user identity from either a Bearer JWT or (in non-production) the `x-dev-user-id`

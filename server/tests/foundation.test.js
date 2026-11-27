@@ -3,14 +3,15 @@ import { after, before, describe, it } from 'node:test';
 import mongoose from 'mongoose';
 
 import { createApp } from '../src/app.js';
-import { requireAuth } from '../src/middleware/auth.js';
+import { requireAuth } from '../src/schemas/middleware/auth.js';
 import {
   idParamSchema,
   postSortQuerySchema,
   validate,
   voteBodySchema,
   z,
-} from '../src/middleware/validate.js';
+} from '../src/schemas/middleware/validate.js';
+
 import { Comment, Community, Membership, Post, User, Vote } from '../src/models/index.js';
 import { asyncHandler } from '../src/utils/asyncHandler.js';
 import { decodeCursor, encodeCursor } from '../src/utils/pagination.js';

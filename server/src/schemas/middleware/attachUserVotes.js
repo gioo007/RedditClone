@@ -1,4 +1,4 @@
-import { getUserVotesMap } from '../services/vote.service.js';
+import { getUserVotesMap } from '../../services/vote.service.js';
 
 /**
  * Adds userVote (1, -1, or 0) to each post or comment
