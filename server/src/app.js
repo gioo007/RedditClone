@@ -9,7 +9,7 @@ import swaggerUi from 'swagger-ui-express';
 import YAML from 'yaml';
 
 import { env } from './config/env.js';
-import { errorHandler, notFoundHandler } from './middleware/error.js';
+import { errorHandler, notFoundHandler } from './schemas/middleware/error.js';
 import apiRoutes from './routes/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
