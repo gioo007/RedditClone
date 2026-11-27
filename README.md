@@ -376,7 +376,8 @@ npm run dev
 PORT=5000
 MONGODB_URI=
 JWT_SECRET=
-JWT_EXPIRES_IN=7d
+JWT_ISSUER=reddit-clone-api
+JWT_AUDIENCE=reddit-clone-client
 AI_API_KEY=
 CLIENT_URL=http://localhost:5173
 ```
@@ -384,7 +385,7 @@ CLIENT_URL=http://localhost:5173
 **client/.env**
 
 ```
-VITE_API_URL=http://localhost:5000/api
+VITE_API_URL=/api
 VITE_USE_MOCKS=false
 ```
 
