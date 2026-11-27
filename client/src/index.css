@@ -8,3 +8,9 @@
       -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 }
+
+@layer components {
+  .input {
+    @apply w-full rounded border border-reddit-border bg-zinc-50 px-3 py-2 text-sm text-reddit-ink outline-none focus:border-reddit-blue focus:bg-white;
+  }
+}
