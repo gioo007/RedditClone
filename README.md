@@ -416,7 +416,9 @@ VITE_USE_MOCKS=false
 │       ├── routes/
 │       ├── controllers/
 │       ├── services/        # Business logic (voting, AI, feed)
-│       ├── middleware/      # Auth, moderation, validation, errors
+│       ├── schemas/
+│       │   ├── middleware/  # Auth, moderation, validation, errors
+│       │   └── validators/  # Endpoint-specific Zod schemas
 │       └── config/
 ├── docs/
 │   ├── openapi.yaml         # API contract
