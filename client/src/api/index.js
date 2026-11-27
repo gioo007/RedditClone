@@ -1,12 +1,6 @@
-import {
-  API_BASE_URL,
-  USE_MOCKS,
-  apiRequest,
-  getStoredToken,
-  setStoredToken,
-} from './httpClient.js';
+import { API_BASE_URL, USE_MOCKS, apiRequest, setAccessToken } from './httpClient.js';
 
-export { API_BASE_URL, USE_MOCKS, apiRequest, getStoredToken, setStoredToken };
+export { API_BASE_URL, USE_MOCKS, apiRequest, setAccessToken };
 
 export const api = {
   health: {
@@ -15,6 +9,7 @@ export const api = {
   auth: {
     register: (payload) => apiRequest('/auth/register', { method: 'POST', body: payload }),
     login: (payload) => apiRequest('/auth/login', { method: 'POST', body: payload }),
+    refresh: () => apiRequest('/auth/refresh', { method: 'POST' }),
     me: () => apiRequest('/auth/me'),
     logout: () => apiRequest('/auth/logout', { method: 'POST' }),
   },

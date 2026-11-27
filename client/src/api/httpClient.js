@@ -2,23 +2,21 @@ import { handleMockRequest } from './mockAdapter.js';
 
 const envMeta = typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env : {};
 
-export const API_BASE_URL = envMeta.VITE_API_URL || 'http://localhost:5000/api';
+export const API_BASE_URL = envMeta.VITE_API_URL || '/api';
 export const USE_MOCKS = String(envMeta.VITE_USE_MOCKS || 'false').toLowerCase() === 'true';
 
-const TOKEN_STORAGE_KEY = 'reddit_clone_token';
+let accessToken = null;
 
-export function getStoredToken() {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
-  return window.localStorage.getItem(TOKEN_STORAGE_KEY);
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    window.localStorage.removeItem('reddit_clone_token');
+  } catch (err) {
+    if (err?.name !== 'SecurityError') throw err;
+  }
 }
 
-export function setStoredToken(token) {
-  if (typeof window === 'undefined' || !window.localStorage) return;
-  if (token) {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
-  } else {
-    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
-  }
+export function setAccessToken(token) {
+  accessToken = token || null;
 }
 
 export class ApiClientError extends Error {
@@ -33,7 +31,8 @@ export class ApiClientError extends Error {
 
 function buildUrl(path, params) {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  const url = new URL(`${API_BASE_URL}${cleanPath}`);
+  const baseUrl = API_BASE_URL.endsWith('/') ? API_BASE_URL.slice(0, -1) : API_BASE_URL;
+  const url = new URL(`${baseUrl}${cleanPath}`, window.location.origin);
   if (params) {
     Object.entries(params).forEach(([key, val]) => {
       if (val !== undefined && val !== null && val !== '') {
@@ -51,12 +50,11 @@ export async function apiRequest(path, { method = 'GET', params, body, headers =
   }
 
   const url = buildUrl(path, params);
-  const token = getStoredToken();
 
   const requestHeaders = {
     Accept: 'application/json',
     ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     ...headers,
   };
 
@@ -64,6 +62,7 @@ export async function apiRequest(path, { method = 'GET', params, body, headers =
     method,
     headers: requestHeaders,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    credentials: 'include',
   });
 
   const payload = await response.json().catch(() => null);
