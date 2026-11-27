@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { API_BASE_URL, USE_MOCKS } from '../api/index.js';
+import SearchBar from './SearchBar.jsx';
 
 export default function Navbar() {
   const docsUrl = `${API_BASE_URL}/docs`;
@@ -14,14 +15,7 @@ export default function Navbar() {
           <span className="text-lg font-bold tracking-tight text-reddit-ink">reddit</span>
         </Link>
 
-        <div className="hidden max-w-md flex-1 sm:block">
-          <input
-            type="search"
-            disabled
-            placeholder="Search communities and users (Phase 4)"
-            className="w-full rounded-full border border-reddit-border bg-zinc-100 px-4 py-1.5 text-sm text-reddit-muted"
-          />
-        </div>
+        <SearchBar />
 
         <div className="flex items-center gap-2.5">
           <span
