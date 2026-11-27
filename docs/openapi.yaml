@@ -11,7 +11,6 @@ info:
     - **Error envelope:** `{ "success": false, "error": { "code": "...", "message": "...", "details": [...] } }`.
     - **Pagination:** Cursor-based (`cursor` + `limit`, returning `{ nextCursor, hasMore, limit }`).
     - **Voting:** Idempotent target state (`value` in `[1, -1, 0]`) for both posts and comments.
-    - **Development stub auth:** During parallel development before JWT auth is merged, endpoints accepting `bearerAuth` also honor `x-dev-user-id` in `development` mode.
 servers:
   - url: http://localhost:5000/api
     description: Local development server
@@ -41,11 +40,6 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: JWT returned by `/auth/login` or `/auth/register`
-    devUserHeader:
-      type: apiKey
-      in: header
-      name: x-dev-user-id
-      description: Development-only stub header (24-hex ObjectId) for parallel Phase 1-3 testing
 
   parameters:
     CursorParam:
@@ -205,7 +199,7 @@ components:
           $ref: '#/components/schemas/UserProfile'
         token:
           type: string
-          description: Signed JWT access token
+          description: Short-lived signed JWT access token. Refresh credentials are issued in an HttpOnly cookie.
           example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
     CommunityRule:
@@ -618,23 +612,26 @@ paths:
                   minLength: 3
                   maxLength: 30
                   pattern: '^[a-zA-Z0-9_]+$'
+                  description: Case-insensitive and unique.
                   example: dev_alice
                 email:
                   type: string
                   format: email
+                  description: Case-insensitive and unique.
                   example: alice@example.com
                 password:
                   type: string
-                  minLength: 8
+                  minLength: 12
                   maxLength: 128
-                  example: Str0ngPass!
+                  description: NFKC-normalized by the server; do not trim or transform client-side.
+                  example: correct horse battery staple
                 displayName:
                   type: string
                   maxLength: 50
                   example: Alice
       responses:
         '201':
-          description: Account created and JWT issued
+          description: Account created; an access JWT is returned and a refresh token is set in an HttpOnly cookie.
           content:
             application/json:
               schema:
@@ -649,7 +646,11 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '409':
-          $ref: '#/components/responses/Conflict'
+          description: Username or email is already registered. Error messages are `username taken` or `email already registered`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /auth/login:
     post:
@@ -672,7 +673,7 @@ paths:
                   example: Str0ngPass!
       responses:
         '200':
-          description: Authenticated successfully
+          description: Authenticated; an access JWT is returned and a refresh token is set in an HttpOnly cookie.
           content:
             application/json:
               schema:
@@ -689,13 +690,39 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotate the current refresh session and issue a new access token
+      description: Reads the refresh token from the HttpOnly cookie. Successful rotations preserve the session's original seven-day absolute expiry.
+      responses:
+        '200':
+          description: Access token issued; a rotated refresh cookie is set unless this is a concurrent refresh retry within the grace window.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: HttpOnly; SameSite=Lax refresh cookie scoped to /api/auth.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/AuthPayload'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /auth/me:
     get:
       tags: [Auth]
       summary: Get currently authenticated user profile
       security:
         - bearerAuth: []
-        - devUserHeader: []
       responses:
         '200':
           description: Current user profile
@@ -717,9 +744,6 @@ paths:
     post:
       tags: [Auth]
       summary: Log out current session
-      security:
-        - bearerAuth: []
-        - devUserHeader: []
       responses:
         '200':
           description: Logged out
@@ -735,11 +759,9 @@ paths:
                   data:
                     type: object
                     properties:
-                      message:
-                        type: string
-                        example: Logged out successfully
-        '401':
-          $ref: '#/components/responses/Unauthorized'
+                      loggedOut:
+                        type: boolean
+                        example: true
 
   /users/me:
     patch:
@@ -747,7 +769,6 @@ paths:
       summary: Edit the authenticated user's profile
       security:
         - bearerAuth: []
-        - devUserHeader: []
       requestBody:
         required: true
         content:
@@ -921,7 +942,6 @@ paths:
       summary: Create a new community (creator becomes moderator and initial member)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       requestBody:
         required: true
         content:
@@ -1004,7 +1024,6 @@ paths:
       summary: Update community details (moderator only)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - name: name
           in: path
@@ -1061,7 +1080,6 @@ paths:
       summary: Join a community
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - name: name
           in: path
@@ -1104,7 +1122,6 @@ paths:
       summary: Leave a community (community creator cannot leave as sole moderator)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - name: name
           in: path
@@ -1182,7 +1199,6 @@ paths:
       summary: Create a new post in a community
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - name: name
           in: path
@@ -1322,7 +1338,6 @@ paths:
       summary: Edit your own post (clears cached AI summary if body changes)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1369,7 +1384,6 @@ paths:
       summary: Soft-delete your own post
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       responses:
@@ -1406,7 +1420,6 @@ paths:
       summary: Remove a post as the community moderator
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1447,7 +1460,6 @@ paths:
       summary: Upvote, downvote, or remove vote on a post (concurrency-safe)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1483,7 +1495,6 @@ paths:
       summary: Summarize a post using server-side generative AI
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       responses:
@@ -1551,7 +1562,6 @@ paths:
       summary: Create a comment on a post or reply to an existing comment
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1599,7 +1609,6 @@ paths:
       summary: Edit your own comment
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1642,7 +1651,6 @@ paths:
       summary: Soft-delete your own comment (preserves child replies in thread)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       responses:
@@ -1672,7 +1680,6 @@ paths:
       summary: Remove a comment as the community moderator (preserves child replies)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:
@@ -1712,7 +1719,6 @@ paths:
       summary: Upvote, downvote, or remove vote on a comment (concurrency-safe)
       security:
         - bearerAuth: []
-        - devUserHeader: []
       parameters:
         - $ref: '#/components/parameters/ObjectIdPathParam'
       requestBody:

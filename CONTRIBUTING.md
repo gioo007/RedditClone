@@ -185,15 +185,14 @@ All feed, community post, user activity, and community browse endpoints use **cu
 
 To ensure Phases 1–4 start simultaneously without waiting on dependencies:
 
-1. **Auth Middleware Stub (`server/src/middleware/auth.js`):**
-   - Until Member B merges real JWT verification, `requireAuth` and `optionalAuth` accept an `x-dev-user-id` header (24-char hex ObjectId) in development mode and populate `req.user = { _id, username }`.
-   - Member B will replace the token parsing inside `auth.js` while keeping the exact exports (`requireAuth`, `optionalAuth`, `requireModerator`).
+1. **Authentication:**
+   - Auth routes issue short-lived JWT access tokens and HttpOnly refresh cookies. Development requests use the same JWT verification as production; `x-dev-user-id` is not accepted.
 2. **Voting Service Stand-In (`server/src/services/vote.service.js`):**
    - Exports `castVote({ userId, targetType, targetId, value })` and `getUserVotesMap({ userId, targetType, targetIds })` backed by an in-memory `Map` for Phase 0.
    - Member C calls this exact function signature in `posts` and `comments` controllers; Member A replaces the internals with the concurrency-safe MongoDB implementation.
 3. **Frontend Mock Switch (`client/src/api/`):**
    - Setting `VITE_USE_MOCKS=true` in `client/.env` routes all `api.*` calls through `mockAdapter.js` returning realistic shapes matching `docs/openapi.yaml`.
-   - Setting `VITE_USE_MOCKS=false` switches immediately to `VITE_API_URL` (`http://localhost:5000/api`).
+   - Setting `VITE_USE_MOCKS=false` uses `VITE_API_URL` (`/api` by default); Vite proxies `/api` to the local Express server.
 4. **Planned Frontend Split (Once Backend Tracks Finish):**
    - **Member D (Frontend Lead):** Global Reddit layout (navbar, left navigation drawer, right community sidebar), routing, design tokens, home/popular feeds, and search UI.
    - **Member B (after Phase 2):** Login/Signup modals or pages, User Profile view/edit, Community creation & Community header/join/moderator UI.

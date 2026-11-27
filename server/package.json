@@ -17,7 +17,7 @@
     "format:check": "prettier --ignore-path ../.prettierignore --check . ../scripts ../CONTRIBUTING.md ../docs/openapi.yaml"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "argon2": "^0.41.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
@@ -27,7 +27,7 @@
     "morgan": "^1.10.0",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.7.0",
-    "zod": "^3.24.2"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.19.0",

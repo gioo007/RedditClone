@@ -103,7 +103,7 @@ describe('Phase 0 Backend Foundation', () => {
     assert.equal(body.error.code, 'NOT_FOUND');
   });
 
-  it('Stub requireAuth rejects unauthenticated calls and honors x-dev-user-id in non-prod', async () => {
+  it('requireAuth rejects unauthenticated calls and development identity headers', async () => {
     const unauth = await fetch(`${baseUrl}/api/_test-auth`);
     assert.equal(unauth.status, 401);
 
@@ -111,10 +111,12 @@ describe('Phase 0 Backend Foundation', () => {
     const authed = await fetch(`${baseUrl}/api/_test-auth`, {
       headers: { 'x-dev-user-id': fakeId, 'x-dev-username': 'member_c' },
     });
-    assert.equal(authed.status, 200);
-    const body = await authed.json();
-    assert.equal(body.data._id, fakeId);
-    assert.equal(body.data.username, 'member_c');
+    assert.equal(authed.status, 401);
+  });
+
+  it('POST /api/auth/refresh rejects missing refresh credentials', async () => {
+    const res = await fetch(`${baseUrl}/api/auth/refresh`, { method: 'POST' });
+    assert.equal(res.status, 401);
   });
 
   it('Cursor pagination helper encodes and decodes compound cursors cleanly', () => {
@@ -145,7 +147,7 @@ describe('Phase 0 Backend Foundation', () => {
     assert.equal(cleared.downvoteCount, 0);
   });
 
-  it('All 6 Mongoose schema skeletons validate required fields and relationships', () => {
+  it('All Mongoose schema skeletons validate required fields and relationships', () => {
     const user = new User({
       username: 'alice_dev',
       email: 'alice@example.com',
