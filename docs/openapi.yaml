@@ -440,6 +440,14 @@ components:
           type: string
           maxLength: 10000
           example: Great breakdown! Adding an index on (community, score, _id) makes Top sort instant too.
+        postInfo:
+          type: object
+          description: Returned by /users/{username}/comments only
+          properties:
+            title:
+              type: string
+            communityName:
+              type: string
         score:
           type: integer
           example: 9
