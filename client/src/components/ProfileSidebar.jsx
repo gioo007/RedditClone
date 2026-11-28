@@ -46,7 +46,9 @@ export default function ProfileSidebar({ profile, isOwn, onEdit }) {
 function Stat({ label, value, small }) {
   return (
     <div>
-      <div className={`${small ? 'text-xs' : 'text-sm'} font-semibold text-reddit-ink`}>{value}</div>
+      <div className={`${small ? 'text-xs' : 'text-sm'} font-semibold text-reddit-ink`}>
+        {value}
+      </div>
       <div className="text-xs text-reddit-muted">{label}</div>
     </div>
   );

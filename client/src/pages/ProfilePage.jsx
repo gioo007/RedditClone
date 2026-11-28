@@ -18,10 +18,10 @@ export default function ProfilePage() {
   const { user, token, setUser } = useAuth();
 
   const [profile, setProfile] = useState(null);
-  const [profileState, setProfileState] = useState('loading'); 
+  const [profileState, setProfileState] = useState('loading');
   const [tab, setTab] = useState('overview');
   const [sort, setSort] = useState('new');
-  const [items, setItems] = useState([]); 
+  const [items, setItems] = useState([]);
   const [cursor, setCursor] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [listLoading, setListLoading] = useState(true);
@@ -39,7 +39,6 @@ export default function ProfilePage() {
 
   const isOwn = Boolean(user && profile && user.username === profile.username);
 
-  
   useEffect(() => {
     let cancelled = false;
     setProfileState('loading');
@@ -127,7 +126,9 @@ export default function ProfilePage() {
   if (profileState === 'notfound') {
     return (
       <div className="mx-auto max-w-6xl px-4 py-16 text-center">
-        <h1 className="text-xl font-bold text-reddit-ink">Sorry, nobody on Reddit goes by that name.</h1>
+        <h1 className="text-xl font-bold text-reddit-ink">
+          Sorry, nobody on Reddit goes by that name.
+        </h1>
         <p className="mt-2 text-sm text-reddit-muted">u/{username} doesn&apos;t exist.</p>
       </div>
     );
