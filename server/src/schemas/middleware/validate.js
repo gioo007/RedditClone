@@ -3,10 +3,6 @@ import { ApiError } from '../../utils/ApiError.js';
 
 export { z };
 
-/**
- * Reusable primitive Zod schemas aligned with `docs/openapi.yaml`.
- * Track owners compose endpoint-specific schemas from these in Phases 2 and 3.
- */
 export const objectIdSchema = z
   .string()
   .regex(/^[a-fA-F0-9]{24}$/, 'Must be a valid 24-character hex ObjectId');
