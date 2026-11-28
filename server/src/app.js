@@ -18,6 +18,7 @@ const openApiSpec = YAML.parse(fs.readFileSync(openApiPath, 'utf8'));
 
 export function createApp({ registerExtraRoutes } = {}) {
   const app = express();
+  app.set('trust proxy', 1);
 
   app.use(
     helmet({
@@ -32,7 +33,7 @@ export function createApp({ registerExtraRoutes } = {}) {
   );
 
   if (env.nodeEnv !== 'test') {
-    app.use(morgan('dev'));
+    app.use(morgan(':method :status :response-time ms'));
   }
 
   app.use(express.json({ limit: '1mb' }));

@@ -3,6 +3,10 @@ import { connectDB, disconnectDB } from './config/db.js';
 import { env } from './config/env.js';
 
 async function startServer() {
+  if (env.nodeEnv === 'production' && Buffer.byteLength(env.jwtSecret, 'utf8') < 32) {
+    throw new Error('JWT_SECRET must be configured with at least 32 bytes in production');
+  }
+
   await connectDB();
 
   const server = app.listen(env.port, () => {
@@ -23,6 +27,6 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  console.error('[server] Fatal startup error:', err);
+  console.error('[server] Fatal startup error:', err?.name || 'Error');
   process.exit(1);
 });

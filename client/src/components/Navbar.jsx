@@ -39,6 +39,18 @@ export default function Navbar() {
           >
             API Contract
           </a>
+          <Link
+            to="/login"
+            className="rounded-full border border-reddit-border px-3.5 py-1.5 text-xs font-bold text-reddit-ink transition hover:bg-zinc-50"
+          >
+            Sign in
+          </Link>
+          <Link
+            to="/signup"
+            className="rounded-full bg-reddit-orange px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-reddit-orangeHover"
+          >
+            Join
+          </Link>
         </div>
       </div>
     </header>

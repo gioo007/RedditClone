@@ -104,6 +104,20 @@ export async function handleMockRequest(path, { method = 'GET', body } = {}) {
     };
   }
 
+  if (normalizedMethod === 'POST' && pathname === '/auth/refresh') {
+    return {
+      success: true,
+      data: {
+        user: currentUser,
+        token: 'mock-jwt-token-phase-0',
+      },
+    };
+  }
+
+  if (normalizedMethod === 'POST' && pathname === '/auth/logout') {
+    return { success: true, data: { loggedOut: true } };
+  }
+
   if (normalizedMethod === 'GET' && pathname === '/auth/me') {
     return { success: true, data: currentUser };
   }

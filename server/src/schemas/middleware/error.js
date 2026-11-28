@@ -71,7 +71,7 @@ export function errorHandler(err, _req, res, _next) {
   }
 
   if (env.nodeEnv !== 'test') {
-    console.error('[error]', err);
+    console.error('[error]', err?.name || 'Error', err?.code || 'UNKNOWN');
   }
 
   return res.status(500).json({
