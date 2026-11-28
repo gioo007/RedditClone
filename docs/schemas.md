@@ -115,7 +115,7 @@ The REST API enriches raw MongoDB documents with populated references and viewer
 | Success (single)   | `{ success: true, data: T }`                                                   | Standard response wrapper                                                                |
 | Success (list)     | `{ success: true, data: T[], pagination: CursorPagination }`                   | Paginated endpoints (`/feed`, `/posts`, `/communities`, etc.)                            |
 | `CursorPagination` | `{ nextCursor: string \| null, hasMore: boolean, limit: number }`              | `nextCursor` is base64url `{ v: sortValue, id: _id }` (`server/src/utils/pagination.js`) |
-| `ErrorResponse`    | `{ success: false, error: { code, message, details?: [{ field, message }] } }` | Uniform `4xx`/`5xx` error shape (`server/src/middleware/error.js`)                       |
+| `ErrorResponse`    | `{ success: false, error: { code, message, details?: [{ field, message }] } }` | Uniform `4xx`/`5xx` error shape (`server/src/schemas/middleware/error.js`)               |
 
 ### 2.2 Resource DTOs vs. DB Models
 
@@ -131,9 +131,9 @@ The REST API enriches raw MongoDB documents with populated references and viewer
 | `VoteRequest` / `VoteResult` | Request `{ value: 1 \| -1 \| 0 }` -> Response `{ targetId, targetType, score, upvoteCount, downvoteCount, userVote }`                             |
 | `AiSummaryResult`            | `{ postId, summary, model, generatedAt, cached }` returned by `POST /posts/{id}/summary`                                                          |
 
-### 2.3 HTTP Input Validation (`server/src/middleware/validate.js`)
+### 2.3 HTTP Input Validation (`server/src/schemas/middleware/validate.js`)
 
 Incoming `req.params`, `req.query`, and `req.body` payloads are validated at the route boundary with **Zod** (`validate({ params, query, body })`), while Mongoose enforces storage-level constraints on MongoDB documents:
 
 - **Shared primitives included in Phase 0:** `objectIdSchema`, `idParamSchema`, `cursorPaginationQuerySchema`, `postSortQuerySchema`, and `voteBodySchema`.
-- **Automatic protections:** Unknown keys are stripped from `req.body` before controllers run (preventing mass-assignment of internal fields like `score` or `karma`), query strings like `?limit=20` are coerced to typed values, and any `ZodError` is formatted into the standard `400 VALIDATION_ERROR` envelope by `server/src/middleware/error.js`.
+- **Automatic protections:** Unknown keys are stripped from `req.body` before controllers run (preventing mass-assignment of internal fields like `score` or `karma`), query strings like `?limit=20` are coerced to typed values, and any `ZodError` is formatted into the standard `400 VALIDATION_ERROR` envelope by `server/src/schemas/middleware/error.js`.
